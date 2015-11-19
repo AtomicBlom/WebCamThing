@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -107,7 +109,17 @@ namespace WebCamTest
 		{
 			if (capabilities != null)
 			{
+				if (_currentDevice.IsRunning)
+				{
+					_currentDevice.SignalToStop();
+				}
 				_currentDevice.VideoResolution = capabilities;
+				ThreadPool.QueueUserWorkItem(state =>
+						{
+							_currentDevice.WaitForStop();
+							_currentDevice.Start();
+						}
+					);
 			}
 		}
 
@@ -143,12 +155,23 @@ namespace WebCamTest
 			}
 			else
 			{
-				Dispatcher.Invoke(() =>
+				try
+				{
+					Dispatcher.Invoke(() =>
 					{
 						DisplayImage(bmp.Width, bmp.Height, bmp.HorizontalResolution, bmp.VerticalResolution, bmp.PixelFormat, rgbValues);
 					}
-				);
+						);
+				}
+				catch (TaskCanceledException) {}
 			}
+		}
+
+		protected override void OnClosing(CancelEventArgs e)
+		{
+			base.OnClosing(e);
+			_currentDevice.NewFrame -= DeviceOnNewFrame;
+			_currentDevice.SignalToStop();
 		}
 
 		private void DisplayImage(int width, int height, float dpiX, float dpiY, WinFormsPixelFormat pixelFormat,
@@ -159,7 +182,7 @@ namespace WebCamTest
 				var wpfPixelFormat = getWpfPixelFormatFromWinformsPixelFormat(pixelFormat);
 
 				var bitsPerPixel = wpfPixelFormat.BitsPerPixel;
-				var stride = ((width*bitsPerPixel + (bitsPerPixel - 1)) & (bitsPerPixel - 1))/8;
+				var stride = ((width*bitsPerPixel + (bitsPerPixel - 1)) & ~(bitsPerPixel - 1))/8;
 
 				var bitmapSource = BitmapSource.Create(
 					width,
@@ -175,9 +198,7 @@ namespace WebCamTest
 				rawRGB.Height = bitmapSource.Height;
 				rawRGB.Source = bitmapSource;
 			}
-			catch (TaskCanceledException tce)
-			{
-			}
+			catch (TaskCanceledException) {}
 		}
 
 		private PixelFormat getWpfPixelFormatFromWinformsPixelFormat(WinFormsPixelFormat pixelFormat)
