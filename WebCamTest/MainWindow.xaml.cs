@@ -9,8 +9,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using AForge.Imaging;
 using AForge.Video;
 using AForge.Video.DirectShow;
 using DrawingRectangle = System.Drawing.Rectangle;
@@ -99,10 +101,10 @@ namespace WebCamTest
 
 			CurrentDeviceCapabilities = new ObservableCollection<VideoCapabilities>(_currentDevice.VideoCapabilities);
 			SelectedDeviceCapabilities = CurrentDeviceCapabilities.FirstOrDefault();
-
-
+			
 			_currentDevice.NewFrame += DeviceOnNewFrame;
-			_currentDevice.Start();
+			
+
 		}
 
 		private void OnSelectedDeviceCapabilitiesChanged(VideoCapabilities capabilities)
@@ -125,7 +127,8 @@ namespace WebCamTest
 
 		private void DeviceOnNewFrame(object sender, NewFrameEventArgs eventArgs)
 		{
-			var bmp = eventArgs.Frame;
+			var bmp = eventArgs.Frame;		
+
 			// Lock the bitmap's bits.  
 			var rect = new DrawingRectangle(0, 0, bmp.Width, bmp.Height);
 			var bmpData =
@@ -184,6 +187,22 @@ namespace WebCamTest
 				var bitsPerPixel = wpfPixelFormat.BitsPerPixel;
 				var stride = ((width*bitsPerPixel + (bitsPerPixel - 1)) & ~(bitsPerPixel - 1))/8;
 
+				Parallel.For(0, imageData.Length / 3, index =>
+					{
+						int i = index*3;
+						byte r = imageData[i + 0];
+						byte g = imageData[i + 1];
+						byte b = imageData[i + 2];
+
+						//var yCbCr = new YCbCr(r / 255.0f, g / 255.0f, b / 255.0f);
+						//var rgb = yCbCr.ToRGB();
+
+						imageData[i] = r;
+						imageData[i + 1] = g;
+						imageData[i + 2] = b;//(byte)(255 - b);
+					}
+				);
+
 				var bitmapSource = BitmapSource.Create(
 					width,
 					height,
@@ -209,6 +228,14 @@ namespace WebCamTest
 					return PixelFormats.Rgb24;
 				default:
 					throw new InvalidCastException($"No mapping created for winforms pixel format {pixelFormat}");
+			}
+		}
+
+		private void DisplayDeviceProperties_OnClick(object sender, RoutedEventArgs e)
+		{
+			if (_currentDevice != null)
+			{
+				_currentDevice.DisplayPropertyPage(new WindowInteropHelper(this).Handle);
 			}
 		}
 	}
